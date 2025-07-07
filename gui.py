@@ -1,24 +1,26 @@
 import customtkinter
 from tkinter import filedialog
 import os
-from datetime import datetime
+import csv
 import subprocess
 import soundfile as sf
 import pyloudnorm as loud
 from pathlib import Path
-from prettytable import PrettyTable
+from prettytable import PrettyTable, from_csv
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 
+
+
+def center_app(app_window, app_width: int, app_height: int):
+    """Centers the window to the main display/monitor"""
+    screen_width = app_window.winfo_screenwidth()
+    screen_height = app_window.winfo_screenheight()
+    x = int((screen_width / 2) - (app_width / 2))
+    y = int((screen_height / 2) - (app_height / 2))
+    app_window.geometry(f"{app_width}x{app_height}+{x}+{y}")
 
 # BACK
-
-def integrated_lufs_pyloudnorm(file_path):
-    """Analyzes LUFS-I for .wav / .flac / .mp3 files"""
-    data, rate = sf.read(file_path)
-    meter = loud.Meter(rate, )
-    loudness = meter.integrated_loudness(data)
-    return round(loudness, 2)
-
 
 def integrated_lufs_pyloudnorm_2(file):
     try:
@@ -33,7 +35,7 @@ def integrated_lufs_pyloudnorm_2(file):
             print(f"Warning: {file.name} is too short. Using smaller block size.")
 
         meter = loud.Meter(rate, block_size=block_size_to_use)
-        return meter.integrated_loudness(audio)
+        return round(meter.integrated_loudness(audio))
     except Exception as e:
         print(f"Error processing {file.name}: {e}")
         return None
@@ -95,27 +97,11 @@ def channel_count_ffprobe(file_path):
         return None
 
 
-def get_directory_path():
-    """Returns a path object from a string pasted by user, leading to a directory"""
-    while True:
-        file_path = input("Please enter the location of the folder: ").strip()
-        # Remove surrounding quotes if present
-        if file_path.startswith('"') and file_path.endswith('"'):
-            file_path = file_path[1:-1]
-        # Convert the string to a Path object
-        path = Path(file_path)
-        if path.is_dir():
-            return path
-        else:
-            print("The path does not point to a valid directory.")
-
-
 def wav_lister(path):
     """Returns a list of .wav files contained in path (including parent and child directories)"""
     # Use Path.glob to find all files in the specified directory
     wav_files = list(path.glob('**/*.wav'))
     wav_lister_amount = len(wav_files)
-    # print(f'{wav_amount} WAV files')
     return wav_lister_amount
 
 
@@ -142,9 +128,9 @@ def analyze_audio_files(path, wav_switch_state, flac_switch_state, mp3_switch_st
     """Analyze selected audio files in the given path and return their filename, integrated loudness (LUFS-I),
     true peak, sample rate, and channel count, based on checkbox states."""
     # Find all audio files in the specified directory
-    wav_files = list(path.glob('**/*.wav')) if wav_switch_state else []
-    mp3_files = list(path.glob('**/*.mp3')) if mp3_switch_state else []
-    flac_files = list(path.glob('**/*.flac')) if flac_switch_state else []
+    wav_files = list(path.glob('*/*.wav')) if wav_switch_state else []
+    mp3_files = list(path.glob('*/*.mp3')) if mp3_switch_state else []
+    flac_files = list(path.glob('*/*.flac')) if flac_switch_state else []
     if wav_files:
         global wav_amount
         wav_amount = wav_lister(path)
@@ -208,9 +194,9 @@ def analyze_audio_files(path, wav_switch_state, flac_switch_state, mp3_switch_st
 
 def analyze_audio_files_2(path, wav_switch_state, flac_switch_state, mp3_switch_state, include_lufs,
                           include_peak, include_samplerate, include_channels, include_bit_depth, include_path):
-    wav_files = list(path.glob('*/*.wav')) if wav_switch_state else []
-    mp3_files = list(path.glob('*/*.mp3')) if mp3_switch_state else []
-    flac_files = list(path.glob('*/*.flac')) if flac_switch_state else []
+    wav_files = list(path.glob('**/*.wav')) if wav_switch_state else []
+    mp3_files = list(path.glob('**/*.mp3')) if mp3_switch_state else []
+    flac_files = list(path.glob('**/*.flac')) if flac_switch_state else []
 
     audio_files = wav_files + mp3_files + flac_files
     results = []
@@ -218,8 +204,8 @@ def analyze_audio_files_2(path, wav_switch_state, flac_switch_state, mp3_switch_
     total_files = len(audio_files)
     label_results.configure(text="In progress. Please wait...")
 
-    def update_progress(i):
-        progress_bar.set(i / total_files)
+    def update_progress(it):
+        progress_bar.set(it / total_files)
         window.update()
 
     with ThreadPoolExecutor() as executor:
@@ -265,10 +251,6 @@ def process_file(file, include_lufs, include_peak, include_samplerate,
     return tuple(result_row)
 
 
-
-
-
-
 # FRONT
 def uncheck_boxes_if_switches():
     if switch_wav.get() == 0 and switch_flac.get() == 0 and switch_mp3.get() == 0:
@@ -307,26 +289,10 @@ def check_entry(*args):
             button_start.configure(state="normal", text_color=enabled_text_color)
 
 
-def button_export_csv_file_to_desktop():
-    string_results = results_to_export
-    data = string_results
-    desktop_path = os.path.join(os.environ['USERPROFILE'], 'Desktop')
-    analyzed_path = entry_path.get()
-    output_filename = (f"{datetime.now().strftime('%H-%M_%B_%d')} Results for {os.path.basename(analyzed_path)} folder"
-                       f".csv")
-    output_path = os.path.join(desktop_path, output_filename)
-    # data_list = data.splitlines()
-    formated_data = data.replace(",", "\t")
-
-    if output_path:
-        try:
-            with open(output_path, "w") as file:
-                file.write(f"{formated_data}")
-            label_results.configure(text="File exported")
-        except Exception as e:
-            print(f"Error writing to file: {e}")
-    else:
-        label_results.configure(text="Data export cancelled by user")
+def button_export_csv_file_to_entry_path():
+    export_dir = Path(entry_path.get().strip('"'))
+    analysis_results = scroll_results.get("1.0", "end")
+    convert_prettytable_to_csv_2(analysis_results, os.path.basename(export_dir), export_dir)
 
 
 def button_browse_directory():
@@ -415,14 +381,39 @@ def display_analysis_results(textbox, audio_file_analysis, include_lufs, include
 
     # Insert the results into the textbox
     textbox.insert("0.0", table)
-
-    textbox.insert("end", f"""
-    WAV files: {wav_amount}
-    FLAC files: {flac_amount}
-    MP3 files: {mp3_amount}
-
-    """)
     button_export_data.configure(state="normal")
+
+
+def convert_prettytable_to_csv_2(table_str, dir_name, output_directory):
+    """Converts a PrettyTable string to a CSV file with a custom filename."""
+
+    # Process the string
+    lines = table_str.strip().split('\n')
+    headers = [h.strip() for h in lines[1].split('|')[1:-1]]
+    rows = []
+
+    for line in lines[3:-1]:
+        row = [field.strip() for field in line.split('|')[1:-1]]
+        rows.append(row)
+
+    # Get current date and time
+    date_time = datetime.now().strftime("%Y_%h%m_%H_%M")
+
+    # Get the OS user
+    user = os.getlogin()
+
+    # Create the output filename
+    output_filename = f"{user}_results__{dir_name}_{date_time}.csv"
+    output_path = os.path.join(output_directory, output_filename)
+
+    try:
+        with open(output_path, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file)
+            writer.writerow(headers)
+            writer.writerows(rows)
+        print("CSV file exported successfully")
+    except Exception as e:
+        print(f"Error writing to file: {e}")
 
 
 def button_start_analysis(event=None):
@@ -442,7 +433,7 @@ def button_start_analysis(event=None):
     # Ensure a file type is selected
     if switch_wav.get() == 0 and switch_mp3.get() == 0 and switch_flac.get() == 0:
         button_start.configure(state="disable", text_color=enabled_text_color)
-        label_results.configure(text="You must select a file type first!")
+        label_results.configure(text="You must select a file type first!", corner_radius=10)
         return
     else:
         button_start.configure(state="normal", text_color=enabled_text_color)
@@ -543,8 +534,8 @@ customtkinter.set_appearance_mode("system")
 customtkinter.set_default_color_theme("dark-blue")
 customtkinter.deactivate_automatic_dpi_awareness()
 window = customtkinter.CTk()
-window.resizable(width=True, height=False)
-window.geometry("797x390")  # "797x390"
+window.resizable(width=False, height=False)
+window.geometry("1300x390")  # "797x390"
 window.title("Audio Data Analyzer - by @roldyaudio")
 
 enabled_text_color = "white"  # Example: blue color when enabled
@@ -555,14 +546,14 @@ var_directory_path = customtkinter.StringVar()
 
 colors = ["#011f4b", "#03396c", "#005b96", "#6497b1", "#b3cde0", "#001f24"]
 
-frame_main = customtkinter.CTkFrame(master=window, fg_color="black")  # Color transversal
+frame_main = customtkinter.CTkFrame(master=window, fg_color="black", corner_radius=10)  # Color transversal
 frame_main.pack(expand=True, fill="both", padx=5, pady=5)
 frame_main.columnconfigure((0, 1), weight=0)
 frame_main.rowconfigure((0, 4), weight=0)
 
 # Top left frame ------------------------------------------------------------------------------------------------------
 
-frame_switches = customtkinter.CTkFrame(master=frame_main, )
+frame_switches = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
 frame_switches.grid(row=0, column=0, padx=5, pady=5, rowspan=2)
 frame_switches.columnconfigure((0, 1), weight=0)
 frame_switches.rowconfigure((0, 3), weight=0)
@@ -582,11 +573,11 @@ switch_wav = customtkinter.CTkSwitch(master=frame_switches, text=".wav", progres
                                      command=uncheck_boxes_if_switches)
 switch_wav.grid(row=1, column=0, columnspan=2, ipady=3)
 switch_wav.select()
-switch_mp3 = customtkinter.CTkSwitch(master=frame_switches, text=".mp3", corner_radius=9, progress_color=progress_color,
+switch_mp3 = customtkinter.CTkSwitch(master=frame_switches, text=".mp3", corner_radius=10, progress_color=progress_color,
                                      button_color=switch_color, button_hover_color=switch_hover,
                                      command=uncheck_boxes_if_switches)
 switch_mp3.grid(row=3, column=0, columnspan=2, ipady=3)
-switch_flac = customtkinter.CTkSwitch(master=frame_switches, text=".flac", corner_radius=9,
+switch_flac = customtkinter.CTkSwitch(master=frame_switches, text=".flac", corner_radius=10,
                                       progress_color=progress_color,
                                       button_color=switch_color, button_hover_color=switch_hover,
                                       command=uncheck_boxes_if_switches)
@@ -594,7 +585,7 @@ switch_flac.grid(row=2, column=0, columnspan=2, ipady=3)
 
 # Bottom left frame --------------------------------------------------------------------------------------------------
 
-frame_checkbox = customtkinter.CTkFrame(master=frame_main, )
+frame_checkbox = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
 frame_checkbox.grid(row=2, column=0, rowspan=4, padx=5, ipady=5)
 frame_checkbox.columnconfigure((0, 0), weight=0)
 frame_checkbox.rowconfigure((0, 6), weight=0)
@@ -653,23 +644,22 @@ checkbox_path.select()
 
 # Top right frame -----------------------------------------------------------------------------------------------------
 
-frame_results = customtkinter.CTkFrame(master=frame_main, )
+frame_results = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
 frame_results.grid(row=0, column=1, rowspan=4, padx=1, pady=5, sticky="nsew", )
 frame_results.columnconfigure((0, 0), weight=0)
 frame_results.rowconfigure((0, 0), weight=0)
-scroll_results = customtkinter.CTkTextbox(master=frame_results, state="normal", wrap="none", width=600, height=240,
-                                          font=("Lucida Console", 13))
+scroll_results = customtkinter.CTkTextbox(master=frame_results, state="normal", wrap="none", width=1105, height=240,
+                                          font=("Lucida Console", 13), )
 scroll_results.grid(row=0, column=1, rowspan=4)
 scroll_results.configure(state="normal", wrap="word")
-scroll_results.insert("0.0", """Welcome to the Audio Data Analyzer - by @roldyaudio
-
+scroll_results.insert("0.0", """
 Measures in accordance with the ITU-R BS.1770 recommendation.
 
 - Enter path or browse for directory containing audio files.
 - Select the desire file type to analyse.
 - Check the data you want to include in the analysis.
 - Visualize the data.
-- Export to desktop file if needed.
+- Export to input path if needed.
 
 Enjoy ^^ """)
 scroll_results.configure(state="disable", )
@@ -679,13 +669,13 @@ width = 120
 height = 25
 corner_radius = 10
 border_width = 1
-border_color = "black"
+border_color = "gray"
 hover_color = colors[1]
 fg_color = colors[0]
 text_color = "black"
 
 # Bottom right frame --------------------------------------------------------------------------------------------------
-frame_buttons = customtkinter.CTkFrame(master=frame_main, )
+frame_buttons = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
 frame_buttons.grid(row=4, column=1, rowspan=2, padx=1, sticky="nsew")
 frame_buttons.rowconfigure((0, 2), weight=1)
 frame_buttons.columnconfigure((0, 2), weight=1)
@@ -696,10 +686,10 @@ button_start = customtkinter.CTkButton(master=frame_buttons, text="Start", width
                                        border_color=border_color, hover_color=hover_color, fg_color=fg_color,
                                        state="disabled", command=button_start_analysis)
 button_start.grid(row=0, column=4, )
-button_export_data = customtkinter.CTkButton(master=frame_buttons, text="Export to desktop", width=width, height=height,
+button_export_data = customtkinter.CTkButton(master=frame_buttons, text="Export to file", width=width, height=height,
                                              corner_radius=corner_radius, border_width=border_width,
                                              border_color=border_color, hover_color=hover_color, fg_color=fg_color,
-                                             state="disabled", command=button_export_csv_file_to_desktop)
+                                             state="disabled", command=button_export_csv_file_to_entry_path)
 button_export_data.grid(row=2, column=4, padx=15)
 button_browse = customtkinter.CTkButton(master=frame_buttons, text="Browse", width=width, height=height,
                                         corner_radius=corner_radius, border_width=border_width,
@@ -708,19 +698,20 @@ button_browse = customtkinter.CTkButton(master=frame_buttons, text="Browse", wid
 button_browse.grid(row=0, column=0, sticky="w", padx=15)
 
 # Entry
-entry_path = customtkinter.CTkEntry(master=frame_buttons, width=300,
+entry_path = customtkinter.CTkEntry(master=frame_buttons, width=800,
                                     placeholder_text="Enter directory with files here...", textvariable=var_entry)
 entry_path.grid(row=0, column=1, ipadx=1)
 entry_path.bind("<Return>", button_start_analysis)
 
 # Label results
-label_results = customtkinter.CTkLabel(master=frame_buttons, text="", wraplength=400)
-label_results.grid(row=1, column=0, sticky="w", ipadx=30, columnspan=3)
+label_results = customtkinter.CTkLabel(master=frame_buttons, text="", wraplength=750, )
+label_results.grid(row=1, column=0, sticky="w", ipadx=30, columnspan=3,)
 
 # Progress bar
 progress_bar = customtkinter.CTkProgressBar(master=frame_buttons, progress_color=colors[1], border_width=1,
-                                            fg_color="black", width=400)
+                                            fg_color="black", width=800)
 progress_bar.grid(row=2, column=0, columnspan=2, padx=10)
 progress_bar.set(0)
 
+center_app(window, 1300, 390)
 window.mainloop()
