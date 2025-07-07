@@ -22,7 +22,7 @@ def center_app(app_window, app_width: int, app_height: int):
     screen_width = app_window.winfo_screenwidth()
     screen_height = app_window.winfo_screenheight()
     x = int((screen_width / 2) - (app_width / 2))
-    y = int((screen_height / 4) - (app_height / 2))
+    y = int((screen_height / 3) - (app_height / 2))
     app_window.geometry(f"{app_width}x{app_height}+{x}+{y}")
 
 # BACK
