@@ -7,6 +7,7 @@ import soundfile as sf
 import pyloudnorm as loud
 from pathlib import Path
 from prettytable import PrettyTable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 # BACK
@@ -19,6 +20,25 @@ def integrated_lufs_pyloudnorm(file_path):
     return round(loudness, 2)
 
 
+def integrated_lufs_pyloudnorm_2(file):
+    try:
+        # Load audio file
+        audio, rate = sf.read(file)
+        # Block size configuration
+        default_block_size = 0.4  # Example: 0.4 seconds
+        min_block_size = len(audio) / rate
+        # Determine block size to use
+        block_size_to_use = min(default_block_size, min_block_size)
+        if min_block_size < default_block_size:
+            print(f"Warning: {file.name} is too short. Using smaller block size.")
+
+        meter = loud.Meter(rate, block_size=block_size_to_use)
+        return meter.integrated_loudness(audio)
+    except Exception as e:
+        print(f"Error processing {file.name}: {e}")
+        return None
+
+
 def true_peak_ffmpeg(file_path):
     """Analyzes True Peak for .wav / .flac / .mp3 files"""
     command = [
@@ -26,6 +46,7 @@ def true_peak_ffmpeg(file_path):
     ]
     result = subprocess.run(command, stderr=subprocess.PIPE, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     for line in result.stderr.split('\n'):
+        # print(result)
         if 'max_volume' in line:
             peak_db = float(line.split('max_volume:')[-1].split('dB')[0].strip())
             return peak_db
@@ -116,8 +137,8 @@ def mp3_lister(path):
     return mp3_lister_amount
 
 
-def analyze_audio_files(path, wav_switch_state, flac_switch_state, mp3_switch_state, include_LUFS, include_peak,
-                        include_sampleR, include_channels, include_bit_depth, include_path):
+def analyze_audio_files(path, wav_switch_state, flac_switch_state, mp3_switch_state, include_lufs,
+                        include_peak, include_samplerate, include_channels, include_bit_depth, include_path):
     """Analyze selected audio files in the given path and return their filename, integrated loudness (LUFS-I),
     true peak, sample rate, and channel count, based on checkbox states."""
     # Find all audio files in the specified directory
@@ -151,15 +172,15 @@ def analyze_audio_files(path, wav_switch_state, flac_switch_state, mp3_switch_st
         result_row = [file.name]
 
         # Add LUFS-I if the checkbox is checked
-        if include_LUFS:
-            result_row.append(integrated_lufs_pyloudnorm(file))
+        if include_lufs:
+            result_row.append(integrated_lufs_pyloudnorm_2(file))
 
         # Add True Peak if the checkbox is checked
         if include_peak:
             result_row.append(true_peak_ffmpeg(file))
 
         # Add Sample Rate if the checkbox is checked
-        if include_sampleR:
+        if include_samplerate:
             result_row.append(sample_rate_pyloudnorm(file))
 
         # Add Channel Count if the checkbox is checked
@@ -182,6 +203,70 @@ def analyze_audio_files(path, wav_switch_state, flac_switch_state, mp3_switch_st
     window.update()  # Final UI refresh
 
     return results
+
+
+
+def analyze_audio_files_2(path, wav_switch_state, flac_switch_state, mp3_switch_state, include_lufs,
+                          include_peak, include_samplerate, include_channels, include_bit_depth, include_path):
+    wav_files = list(path.glob('*/*.wav')) if wav_switch_state else []
+    mp3_files = list(path.glob('*/*.mp3')) if mp3_switch_state else []
+    flac_files = list(path.glob('*/*.flac')) if flac_switch_state else []
+
+    audio_files = wav_files + mp3_files + flac_files
+    results = []
+
+    total_files = len(audio_files)
+    label_results.configure(text="In progress. Please wait...")
+
+    def update_progress(i):
+        progress_bar.set(i / total_files)
+        window.update()
+
+    with ThreadPoolExecutor() as executor:
+        futures = {executor.submit(process_file, file, include_lufs, include_peak, include_samplerate,
+                                   include_channels, include_bit_depth, include_path, path): file for file in audio_files}
+
+        for i, future in enumerate(as_completed(futures)):
+            result = future.result()
+            if result is not None:
+                results.append(result)
+
+            if i % max(1, total_files // 100) == 0:
+                update_progress(i)
+
+    progress_bar.set(1.0)
+    window.update()
+
+    return results
+
+
+def process_file(file, include_lufs, include_peak, include_samplerate,
+                 include_channels, include_bit_depth, include_path, path):
+    result_row = [file.name]
+
+    if include_lufs:
+        result_row.append(integrated_lufs_pyloudnorm_2(file))
+
+    if include_peak:
+        result_row.append(true_peak_ffmpeg(file))
+
+    if include_samplerate:
+        result_row.append(sample_rate_pyloudnorm(file))
+
+    if include_channels:
+        result_row.append(channel_count_ffprobe(file))
+
+    if include_bit_depth:
+        result_row.append(bit_depth_soundfile(file))
+
+    if include_path:
+        result_row.append(path / file)
+
+    return tuple(result_row)
+
+
+
+
 
 
 # FRONT
@@ -255,8 +340,8 @@ def button_browse_directory():
         label_results.configure(text="No directory selected, previous path retained.")
 
 
-def display_analysis_results(textbox, audio_file_analysis, include_LUFS, include_peak,
-                             include_sampleR, include_channels, include_bit_depth, include_path):
+def display_analysis_results(textbox, audio_file_analysis, include_lufs, include_peak,
+                             include_samplerate, include_channels, include_bit_depth, include_path):
     """Format the analysis results and display them in a CustomTkinter textbox."""
 
     # Clear the textbox first if needed
@@ -267,11 +352,11 @@ def display_analysis_results(textbox, audio_file_analysis, include_LUFS, include
 
     # Create the header before processing file_data
     header = ["Filename"]
-    if include_LUFS:
+    if include_lufs:
         header.append("LUFS-I")
     if include_peak:
         header.append("T-Peak")
-    if include_sampleR:
+    if include_samplerate:
         header.append("Rate")
     if include_channels:
         header.append("CH")
@@ -369,23 +454,23 @@ def button_start_analysis(event=None):
         include_mp3 = switch_mp3.get() == 1
         include_flac = switch_flac.get() == 1
 
-        # Get the state of the checkboxes (LUFS, True Peak, Sample Rate, Channels)
-        LUFS_state = checkbox_LUFS.get()
+        # Get the state of the checkboxes (Lufs, True Peak, Sample Rate, Channels)
+        lufs_state = checkbox_LUFS.get()
         peak_state = checkbox_peak.get()
-        sampleR_state = checkbox_sampleR.get()
+        samplerate_state = checkbox_sampleR.get()
         channels_state = checkbox_channels.get()
         bit_depth_state = checkbox_bit_depth.get()
         path_state = checkbox_path.get()
 
         # Run the analysis function with the provided states
-        final_analysis = analyze_audio_files(
+        final_analysis = analyze_audio_files_2(
             path,
             wav_switch_state=include_wav,
             flac_switch_state=include_flac,
             mp3_switch_state=include_mp3,
-            include_LUFS=LUFS_state,
+            include_lufs=lufs_state,
             include_peak=peak_state,
-            include_sampleR=sampleR_state,
+            include_samplerate=samplerate_state,
             include_channels=channels_state,
             include_bit_depth=bit_depth_state,
             include_path=path_state,
@@ -409,13 +494,13 @@ def button_start_analysis(event=None):
             result_row = [file_data[0]]  # Start with the filename
             column_index = 1  # Start at index 1 because index 0 is the filename
 
-            if LUFS_state:
+            if lufs_state:
                 result_row.append(file_data[column_index])
                 column_index += 1
             if peak_state and (file_data[0].endswith('.wav') or file_data[0].endswith('.flac')):
                 result_row.append(file_data[column_index])
                 column_index += 1
-            if sampleR_state:
+            if samplerate_state:
                 result_row.append(file_data[column_index])
                 column_index += 1
             if channels_state:
@@ -431,9 +516,9 @@ def button_start_analysis(event=None):
         label_results.configure(text="Analysis Completed.")
         scroll_results.configure(state="normal", wrap="none")
         display_analysis_results(scroll_results, final_analysis,
-                                 include_LUFS=LUFS_state,
+                                 include_lufs=lufs_state,
                                  include_peak=peak_state,
-                                 include_sampleR=sampleR_state,
+                                 include_samplerate=samplerate_state,
                                  include_channels=channels_state,
                                  include_bit_depth=bit_depth_state,
                                  include_path=path_state, )
