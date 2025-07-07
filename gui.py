@@ -417,6 +417,7 @@ def convert_prettytable_to_csv_2(table_str, dir_name, output_directory):
             writer.writerow(headers)
             writer.writerows(rows)
         print("CSV file exported successfully")
+        label_results.configure(text=f"File exported to {output_path}")
     except Exception as e:
         print(f"Error writing to file: {e}")
 
