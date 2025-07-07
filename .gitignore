@@ -1,0 +1,22 @@
+# Entorno Virtual
+venv/
+env/
+.venv/
+
+# Archivos y Carpetas de PyCharm
+.idea/
+
+# Archivos Compilados de Python
+__pycache__/
+*.py[cod]
+
+# Archivos de Log
+*.log
+
+# Archivos de Configuración del Sistema
+*.ini
+*.cfg
+
+# Archivos Temporales
+*.tmp
+*.swp
