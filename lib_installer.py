@@ -36,10 +36,10 @@ def install_requirements_in_directory(base_dir):
 
 
 if __name__ == "__main__":
-    if sys.version_info >= (3, 13):
-        print("❌ This script requires Python 3.12 or lower, because pydub needs audioop.")
-        time.sleep(5)
-        sys.exit(1)
+    # if sys.version_info >= (3, 13):
+    #     print("❌ This script requires Python 3.12 or lower, because pydub needs audioop.")
+    #     time.sleep(3)
+    #     sys.exit(1)
 
     print("🔧 Checking pip...")
     ensure_pip()
