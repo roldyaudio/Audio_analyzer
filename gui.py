@@ -16,6 +16,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 
+def check_ffmpeg_installed():
+    try:
+        subprocess.run(["ffmpeg", "-version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+    except FileNotFoundError:
+        return False
+
 
 def center_app(app_window, app_width: int, app_height: int):
     """Centers the window to the main display/monitor"""
@@ -720,4 +729,11 @@ progress_bar.grid(row=2, column=0, columnspan=2, padx=10)
 progress_bar.set(0)
 
 center_app(window, 1300, 390)
+# Comprobar si FFmpeg está instalado
+if not check_ffmpeg_installed():
+    print("FFmpeg is not installed. Closing the application.")
+    window.destroy()
+else:
+    # Aquí puedes agregar más widgets y lógica de tu aplicación
+    pass
 window.mainloop()
