@@ -1,3 +1,8 @@
+from lib_installer import *
+
+ensure_pip()
+install_requirements_in_directory("C:/Apps/Audio_analyzer")
+
 import customtkinter
 from tkinter import filedialog
 import os
