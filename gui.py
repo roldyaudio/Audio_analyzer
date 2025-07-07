@@ -710,7 +710,7 @@ entry_path.grid(row=0, column=1, ipadx=1)
 entry_path.bind("<Return>", button_start_analysis)
 
 # Label results
-label_results = customtkinter.CTkLabel(master=frame_buttons, text="", wraplength=750, )
+label_results = customtkinter.CTkLabel(master=frame_buttons, text="", wraplength=900, )
 label_results.grid(row=1, column=0, sticky="w", ipadx=30, columnspan=3,)
 
 # Progress bar
