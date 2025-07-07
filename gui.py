@@ -218,6 +218,7 @@ def analyze_audio_files_2(path, wav_switch_state, flac_switch_state, mp3_switch_
                                    include_channels, include_bit_depth, include_path, path): file for file in audio_files}
 
         for i, future in enumerate(as_completed(futures)):
+            print(i)
             result = future.result()
             if result is not None:
                 results.append(result)
