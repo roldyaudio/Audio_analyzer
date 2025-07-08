@@ -62,10 +62,10 @@ def true_peak_ffmpeg(file_path):
     ]
     result = subprocess.run(command, stderr=subprocess.PIPE, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
     for line in result.stderr.split('\n'):
-        # print(result)
         if 'max_volume' in line:
             peak_db = float(line.split('max_volume:')[-1].split('dB')[0].strip())
-            return peak_db
+            formatted_peak_db = f"{peak_db:.2f}"
+            return formatted_peak_db
     return None
 
 
