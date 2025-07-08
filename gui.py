@@ -49,7 +49,7 @@ def integrated_lufs_pyloudnorm_2(file):
             print(f"Warning: {file.name} is too short. Using smaller block size.")
 
         meter = loud.Meter(rate, block_size=block_size_to_use)
-        return round(meter.integrated_loudness(audio))
+        return round(meter.integrated_loudness(audio), 2)
     except Exception as e:
         print(f"Error processing {file.name}: {e}")
         return None
