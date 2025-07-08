@@ -64,8 +64,7 @@ def true_peak_ffmpeg(file_path):
     for line in result.stderr.split('\n'):
         if 'max_volume' in line:
             peak_db = float(line.split('max_volume:')[-1].split('dB')[0].strip())
-            formatted_peak_db = f"{peak_db:.2f}"
-            return formatted_peak_db
+            return peak_db
     return None
 
 
