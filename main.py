@@ -736,7 +736,7 @@ progress_bar.set(0)
 center_app(window, 1300, 390)
 # Comprobar si FFmpeg está instalado
 if not check_ffmpeg_installed():
-    print("\x1b[31mFFmpeg is not installed. Closing the application.\x1b")
+    print("\x1b[31mFFmpeg is not installed. Closing the application.\x1b[0m")
     window.destroy()
 else:
     window.mainloop()
