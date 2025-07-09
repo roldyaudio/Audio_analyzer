@@ -424,7 +424,7 @@ def convert_prettytable_to_csv_2(table_str, dir_name, output_directory):
     user = os.getlogin()
 
     # Create the output filename
-    output_filename = f"{user}_results__{dir_name}_{date_time}"
+    output_filename = f"{user}_results__{dir_name}_{date_time}.xlsx"
     output_path = os.path.join(output_directory, output_filename)
 
     try:
