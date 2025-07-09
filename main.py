@@ -8,6 +8,7 @@ from tkinter import filedialog
 import os
 import csv
 import subprocess
+import pandas as pd
 import soundfile as sf
 import pyloudnorm as loud
 from pathlib import Path
@@ -390,9 +391,10 @@ def display_analysis_results(textbox, audio_file_analysis, include_lufs, include
     table.align["Depth"] = "c"
     table.align["Path"] = "l"
     table.padding_width = 1
-    # print(table)
+    table._rows.sort(key=lambda x: x[0])
 
     # Insert the results into the textbox
+    
     textbox.insert("0.0", table)
     button_export_data.configure(state="normal")
 
@@ -409,6 +411,12 @@ def convert_prettytable_to_csv_2(table_str, dir_name, output_directory):
         row = [field.strip() for field in line.split('|')[1:-1]]
         rows.append(row)
 
+    # Create a DataFrame
+    df = pd.DataFrame(rows, columns=headers)
+
+    # Sort the DataFrame alphabetically by the first column
+    df.sort_values(by=df.columns[0], inplace=True)
+
     # Get current date and time
     date_time = datetime.now().strftime("%Y_%h%m_%H_%M")
 
@@ -420,11 +428,9 @@ def convert_prettytable_to_csv_2(table_str, dir_name, output_directory):
     output_path = os.path.join(output_directory, output_filename)
 
     try:
-        with open(output_path, mode='w', newline='', encoding='utf-8') as file:
-            writer = csv.writer(file)
-            writer.writerow(headers)
-            writer.writerows(rows)
-        print("CSV file exported successfully")
+        # Export to Excel
+        df.to_excel(output_path, index=False, engine='openpyxl')
+        print("Excel file exported successfully")
         label_results.configure(text=f"File exported to {output_path}")
     except Exception as e:
         print(f"Error writing to file: {e}")
