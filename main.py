@@ -739,6 +739,5 @@ if not check_ffmpeg_installed():
     print("\x1b[31mFFmpeg is not installed. Closing the application.\x1b")
     window.destroy()
 else:
-    # Aquí puedes agregar más widgets y lógica de tu aplicación
-    pass
-window.mainloop()
+    window.mainloop()
+    
