@@ -17,16 +17,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 
-def check_ffmpeg_installed():
-    try:
-        subprocess.run(["ffmpeg", "-version"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return True
-    except subprocess.CalledProcessError:
-        return False
-    except FileNotFoundError:
-        return False
-
-
 def center_app(app_window, app_width: int, app_height: int):
     """Centers the window to the main display/monitor"""
     screen_width = app_window.winfo_screenwidth()
