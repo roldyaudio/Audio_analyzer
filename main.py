@@ -726,9 +726,9 @@ progress_bar.set(0)
 center_app(window, 1300, 390)
 # Comprobar si FFmpeg está instalado
 if not check_ffmpeg_installed():
+    window.destroy()
     print("\x1b[31mFFmpeg is not installed. Closing the application.\x1b[0m")
     print("\x1b[33mRefer to 'Download' tab at the App Hub to install it. If you already intalled ffmpeg and still getting this message, re-run the App hub launcher \x1b[0m")
-    window.destroy()
 else:
     window.mainloop()
     
