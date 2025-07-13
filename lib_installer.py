@@ -62,9 +62,9 @@ def install_requirements_in_directory(base_dir):
 
 
     # Comprobar si FFmpeg está instalado al final
-    if not check_ffmpeg_installed():
-        print("\x1b[31mFFmpeg is not installed. Closing the application.\x1b[0m")
-        print("\x1b[33mRefer to 'Download' tab at the App Hub to install it.\x1b[0m")
+    # if not check_ffmpeg_installed():
+    #     print("\x1b[31mFFmpeg is not installed. Closing the application.\x1b[0m")
+    #     print("\x1b[33mRefer to 'Download' tab at the App Hub to install it.\x1b[0m")
 
 
 if __name__ == "__main__":
