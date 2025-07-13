@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import time
+import pkg_resources
 
 
 def ensure_pip():
@@ -25,24 +26,40 @@ def check_ffmpeg_installed():
 
 
 def install_requirements_in_directory(base_dir):
-    # Walk through all folders looking for requirements.txt files
+    """
+    Walk through all folders inside base_dir looking for requirements.txt files.
+    For each requirement:
+    - If already installed with the correct version, skips it.
+    - If not installed, installs it.
+    - If installed but with different version, warns and skips.
+    """
     for root, dirs, files in os.walk(base_dir):
         for file in files:
             if file == "requirements.txt":
                 req_path = os.path.join(root, file)
-                print(f"\n:rocket: Installing dependencies from: {req_path}")
-                print(f":package: Running: {sys.executable} -m pip install -r {req_path}")
+                print(f"\n🔍 Found requirements: {req_path}")
 
-                # Run and show ALL output in real time
-                result = subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-r", req_path]
-                )
+                # Read the requirements
+                with open(req_path, 'r') as f:
+                    requirements = [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
-                if result.returncode == 0:
-                    print(f":white_check_mark: Successfully installed from {req_path}")
-                else:
-                    print(f":x: Error installing from {req_path}")
-                    sys.exit(1)
+                for req in requirements:
+                    try:
+                        pkg_resources.require(req)
+                        print(f"✅ {req} is already installed with the correct version.")
+                    except pkg_resources.DistributionNotFound:
+                        print(f"📦 {req} is not installed. Installing...")
+                        result = subprocess.run([sys.executable, "-m", "pip", "install", req])
+                        if result.returncode == 0:
+                            print(f"✅ Successfully installed {req}")
+                        else:
+                            print(f"❌ Failed to install {req}")
+                            sys.exit(1)
+                    except pkg_resources.VersionConflict as e:
+                        installed = e.dist.version
+                        expected = e.req
+                        print(f"⚠ Version conflict for {req}: installed {installed}, expected {expected}. Skipping installation of this package.")
+
 
     # Comprobar si FFmpeg está instalado al final
     if not check_ffmpeg_installed():
