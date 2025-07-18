@@ -388,10 +388,14 @@ def display_analysis_results(textbox, audio_file_analysis, include_lufs, include
     button_export_data.configure(state="normal")
 
 
+import pandas as pd
+import os
+from datetime import datetime
+
 def convert_prettytable_to_csv_2(table_str, dir_name, output_directory):
     """Converts a PrettyTable string to a CSV file with a custom filename."""
 
-    # Process the string
+    # Procesar el string
     lines = table_str.strip().split('\n')
     headers = [h.strip() for h in lines[1].split('|')[1:-1]]
     rows = []
@@ -400,29 +404,34 @@ def convert_prettytable_to_csv_2(table_str, dir_name, output_directory):
         row = [field.strip() for field in line.split('|')[1:-1]]
         rows.append(row)
 
-    # Create a DataFrame
+    # Crear DataFrame
     df = pd.DataFrame(rows, columns=headers)
 
-    # Sort the DataFrame alphabetically by the first column
+    # Intentar convertir columnas numéricas automáticamente
+    for col in df.columns:
+        df[col] = pd.to_numeric(df[col], errors='ignore')  # Si no puede convertir, deja el valor como string
+
+    # Ordenar alfabéticamente por la primera columna
     df.sort_values(by=df.columns[0], inplace=True)
 
-    # Get current date and time
-    date_time = datetime.now().strftime("%Y_%h%m_%H_%M")
+    # Obtener fecha y hora actual
+    date_time = datetime.now().strftime("%Y_%b%d_%H_%M")
 
-    # Get the OS user
+    # Obtener usuario del sistema
     user = os.getlogin()
 
-    # Create the output filename
+    # Nombre del archivo de salida
     output_filename = f"{user}_results__{dir_name}_{date_time}.xlsx"
     output_path = os.path.join(output_directory, output_filename)
 
     try:
-        # Export to Excel
+        # Exportar a Excel
         df.to_excel(output_path, index=False, engine='openpyxl')
-        print("Excel file exported successfully")
+        print("✅ Excel file exported successfully")
         label_results.configure(text=f"File exported to {output_path}")
     except Exception as e:
-        print(f"Error writing to file: {e}")
+        print(f"❌ Error writing to file: {e}")
+
 
 
 def button_start_analysis(event=None):
