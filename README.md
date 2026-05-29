@@ -27,7 +27,7 @@ Formatos soportados en el análisis:
 - **Análisis externo:** `ffmpeg` / `ffprobe`
 - **Tablas y exportación:** `prettytable`, `pandas`, `openpyxl`
 
-Dependencias Python declaradas en `requirements.txt`.
+Dependencias Python declaradas en `requirements.txt` con versiones mínimas flexibles para evitar pins innecesarios.
 
 ---
 
@@ -35,9 +35,9 @@ Dependencias Python declaradas en `requirements.txt`.
 
 1. **Python 3.10+** recomendado.
 2. **FFmpeg y FFprobe** instalados y disponibles en el `PATH`.
-3. Sistema operativo con soporte para interfaz de escritorio (el código actual contiene flags de Windows para procesos sin consola).
+3. Sistema operativo con soporte para interfaz de escritorio.
 
-> Nota: el código usa `subprocess.CREATE_NO_WINDOW`, por lo que está orientado principalmente a Windows.
+> Nota: FFmpeg/FFprobe se instalan por fuera del proyecto; la app solo verifica que estén disponibles en el `PATH`.
 
 ## Instalación rápida
 
@@ -53,7 +53,7 @@ El proyecto incluye `lib_installer.py`, que:
 
 - verifica/activa `pip`,
 - recorre directorios para detectar `requirements.txt`,
-- instala paquetes faltantes evitando romper versiones incompatibles.
+- instala paquetes faltantes respetando los rangos flexibles declarados.
 
 ## Uso
 
@@ -112,7 +112,7 @@ pip install -r requirements.txt
 ## Roadmap sugerido
 
 - Añadir tests automatizados para funciones de análisis.
-- Mejorar soporte multiplataforma (eliminar dependencias específicas de Windows).
+- Mejorar cobertura de tests automatizados para exportación y análisis por lotes.
 - Implementar exportación configurable (CSV/XLSX con plantillas).
 - Agregar validación visual de errores por archivo en la UI.
 

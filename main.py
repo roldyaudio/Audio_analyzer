@@ -1,19 +1,22 @@
-from lib_installer import *
-
-install_requirements_in_directory("C:/Apps/Audio_analyzer")
+from lib_installer import check_ffmpeg_installed
 
 import customtkinter
 from tkinter import filedialog
 import os
-import csv
 import subprocess
+from getpass import getuser
 import pandas as pd
 import soundfile as sf
 import pyloudnorm as loud
 from pathlib import Path
-from prettytable import PrettyTable, from_csv
+from prettytable import PrettyTable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+
+
+def creation_flags():
+    """Return subprocess flags that hide child consoles on Windows only."""
+    return getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 def center_app(app_window, app_width: int, app_height: int):
@@ -48,9 +51,9 @@ def integrated_lufs_pyloudnorm_2(file):
 def true_peak_ffmpeg(file_path):
     """Analyzes True Peak for .wav / .flac / .mp3 files"""
     command = [
-        'ffmpeg', '-i', file_path, '-af', 'volumedetect', '-vn', '-sn', '-dn', '-f', 'null', '/dev/null'
+        'ffmpeg', '-i', str(file_path), '-af', 'volumedetect', '-vn', '-sn', '-dn', '-f', 'null', os.devnull
     ]
-    result = subprocess.run(command, stderr=subprocess.PIPE, text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+    result = subprocess.run(command, stderr=subprocess.PIPE, text=True, creationflags=creation_flags())
     for line in result.stderr.split('\n'):
         if 'max_volume' in line:
             peak_db = float(line.split('max_volume:')[-1].split('dB')[0].strip())
@@ -76,11 +79,11 @@ def channel_count_ffprobe(file_path):
         # Run ffprobe to get audio file info
         result = subprocess.run(
             ['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=channels', '-of',
-             'default=noprint_wrappers=1:nokey=1', file_path],
+             'default=noprint_wrappers=1:nokey=1', str(file_path)],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            creationflags=subprocess.CREATE_NO_WINDOW
+            creationflags=creation_flags()
         )
 
         # Get channel count from stdout
@@ -148,6 +151,9 @@ def analyze_audio_files(path, wav_switch_state, flac_switch_state, mp3_switch_st
 
     # Total number of files to process
     total_files = len(audio_files)
+    if total_files == 0:
+        return []
+
     label_results.configure(text="In progress. Please wait...")
     update_interval = max(1, total_files // 100)
 
@@ -182,7 +188,7 @@ def analyze_audio_files(path, wav_switch_state, flac_switch_state, mp3_switch_st
 
         # Add Path if checked
         if include_path:
-            result_row.append(path / file)
+            result_row.append(file)
 
         # Append the result row to the final results
         results.append(tuple(result_row))
@@ -205,6 +211,9 @@ def analyze_audio_files_2(path, wav_switch_state, flac_switch_state, mp3_switch_
     results = []
 
     total_files = len(audio_files)
+    if total_files == 0:
+        return []
+
     label_results.configure(text="In progress. Please wait...")
 
     def update_progress(it):
@@ -231,27 +240,31 @@ def analyze_audio_files_2(path, wav_switch_state, flac_switch_state, mp3_switch_
 
 def process_file(file, include_lufs, include_peak, include_samplerate,
                  include_channels, include_bit_depth, include_path, path):
-    result_row = [file.name]
+    try:
+        result_row = [file.name]
 
-    if include_lufs:
-        result_row.append(integrated_lufs_pyloudnorm_2(file))
+        if include_lufs:
+            result_row.append(integrated_lufs_pyloudnorm_2(file))
 
-    if include_peak:
-        result_row.append(true_peak_ffmpeg(file))
+        if include_peak:
+            result_row.append(true_peak_ffmpeg(file))
 
-    if include_samplerate:
-        result_row.append(sample_rate_pyloudnorm(file))
+        if include_samplerate:
+            result_row.append(sample_rate_pyloudnorm(file))
 
-    if include_channels:
-        result_row.append(channel_count_ffprobe(file))
+        if include_channels:
+            result_row.append(channel_count_ffprobe(file))
 
-    if include_bit_depth:
-        result_row.append(bit_depth_soundfile(file))
+        if include_bit_depth:
+            result_row.append(bit_depth_soundfile(file))
 
-    if include_path:
-        result_row.append(path / file)
+        if include_path:
+            result_row.append(file)
 
-    return tuple(result_row)
+        return tuple(result_row)
+    except Exception as e:
+        print(f"Error processing {file.name}: {e}")
+        return None
 
 
 # FRONT
@@ -286,8 +299,8 @@ def uncheck_boxes_if_switches():
 
 def check_entry(*args):
     if entry_path.get().strip():
-        if switch_wav.get() == 0 and switch_mp3.get() == 0:
-            button_start.configure(state="disable", )
+        if switch_wav.get() == 0 and switch_mp3.get() == 0 and switch_flac.get() == 0:
+            button_start.configure(state="disabled", )
         else:
             button_start.configure(state="normal", text_color=enabled_text_color)
 
@@ -372,25 +385,26 @@ def display_analysis_results(textbox, audio_file_analysis, include_lufs, include
 
     # Align other columns if needed (e.g., right-align numbers)
 
-    table.align["Filename"] = "l"
-    table.align["LUFS-I"] = "c"
-    table.align["T-Peak"] = "c"
-    table.align["Rate"] = "c"
-    table.align["CH"] = "c"
-    table.align["Depth"] = "c"
-    table.align["Path"] = "l"
+    alignment_by_column = {
+        "Filename": "l",
+        "LUFS-I": "c",
+        "T-Peak": "c",
+        "Rate": "c",
+        "CH": "c",
+        "Depth": "c",
+        "Path": "l",
+    }
+    for column_name, alignment in alignment_by_column.items():
+        if column_name in table.field_names:
+            table.align[column_name] = alignment
     table.padding_width = 1
     table._rows.sort(key=lambda x: x[0])
 
     # Insert the results into the textbox
-    
+
     textbox.insert("0.0", table)
     button_export_data.configure(state="normal")
 
-
-import pandas as pd
-import os
-from datetime import datetime
 
 def convert_prettytable_to_csv_2(table_str, dir_name, output_directory):
     """Converts a PrettyTable string to a CSV file with a custom filename."""
@@ -409,7 +423,9 @@ def convert_prettytable_to_csv_2(table_str, dir_name, output_directory):
 
     # Intentar convertir columnas numéricas automáticamente
     for col in df.columns:
-        df[col] = pd.to_numeric(df[col], errors='ignore')  # Si no puede convertir, deja el valor como string
+        converted = pd.to_numeric(df[col], errors='coerce')
+        if converted.notna().sum() == df[col].notna().sum():
+            df[col] = converted
 
     # Ordenar alfabéticamente por la primera columna
     df.sort_values(by=df.columns[0], inplace=True)
@@ -418,7 +434,7 @@ def convert_prettytable_to_csv_2(table_str, dir_name, output_directory):
     date_time = datetime.now().strftime("%Y_%b%d_%H_%M")
 
     # Obtener usuario del sistema
-    user = os.getlogin()
+    user = getuser()
 
     # Nombre del archivo de salida
     output_filename = f"{user}_results__{dir_name}_{date_time}.xlsx"
@@ -450,7 +466,7 @@ def button_start_analysis(event=None):
 
     # Ensure a file type is selected
     if switch_wav.get() == 0 and switch_mp3.get() == 0 and switch_flac.get() == 0:
-        button_start.configure(state="disable", text_color=enabled_text_color)
+        button_start.configure(state="disabled", text_color=enabled_text_color)
         label_results.configure(text="You must select a file type first!", corner_radius=10)
         return
     else:
@@ -492,35 +508,10 @@ def button_start_analysis(event=None):
         if not filename_list:  # Efficiently check if the list is empty
             scroll_results.configure(state="normal", wrap="none")
             scroll_results.delete("1.0", "end")
-            scroll_results.configure(state="disable")
+            scroll_results.configure(state="disabled")
             label_results.configure(text="No such files to analyze")
             return
 
-        # Handling dynamic columns depending on the checkbox states
-        results_columns = []
-        # Collect results for each file
-        for file_data in final_analysis:
-            result_row = [file_data[0]]  # Start with the filename
-            column_index = 1  # Start at index 1 because index 0 is the filename
-
-            if lufs_state:
-                result_row.append(file_data[column_index])
-                column_index += 1
-            if peak_state and (file_data[0].endswith('.wav') or file_data[0].endswith('.flac')):
-                result_row.append(file_data[column_index])
-                column_index += 1
-            if samplerate_state:
-                result_row.append(file_data[column_index])
-                column_index += 1
-            if channels_state:
-                result_row.append(file_data[column_index])
-                column_index += 1
-            if bit_depth_state:
-                result_row.append(file_data[column_index])
-            if path_state:
-                result_row.append(file_data[column_index])
-
-            results_columns.append(result_row)
         # Update the GUI: show success message and hide the progress bar
         label_results.configure(text="Analysis Completed.")
         scroll_results.configure(state="normal", wrap="none")
@@ -531,7 +522,7 @@ def button_start_analysis(event=None):
                                  include_channels=channels_state,
                                  include_bit_depth=bit_depth_state,
                                  include_path=path_state, )
-        scroll_results.configure(state="disable")
+        scroll_results.configure(state="disabled")
 
     else:
         # Update the GUI with an error message if the directory is invalid
@@ -541,202 +532,209 @@ def button_start_analysis(event=None):
         label_results.configure(text="Invalid directory. Please try again.")
 
 
-# GLOBAL
 
-results_to_export = ""
-wav_amount = 0
-flac_amount = 0
-mp3_amount = 0
+def main():
+    global results_to_export, wav_amount, flac_amount, mp3_amount
+    global window, enabled_text_color, disabled_text_color, var_entry, var_directory_path, colors
+    global switch_wav, switch_mp3, switch_flac
+    global checkbox_LUFS, checkbox_peak, checkbox_sampleR, checkbox_channels, checkbox_bit_depth, checkbox_path
+    global button_start, button_export_data, button_browse, entry_path, label_results, progress_bar, scroll_results
 
-customtkinter.set_appearance_mode("system")
-customtkinter.set_default_color_theme("dark-blue")
-customtkinter.deactivate_automatic_dpi_awareness()
-window = customtkinter.CTk()
-window.resizable(width=False, height=False)
-window.geometry("1300x390")  # "797x390"
-window.title("Audio Data Analyzer - by @roldyaudio")
+    # GLOBAL
 
-enabled_text_color = "white"  # Example: blue color when enabled
-disabled_text_color = "#a3a3a3"  # Example: gray color when disabled
-var_entry = customtkinter.StringVar()
-var_entry.trace("w", check_entry)
-var_directory_path = customtkinter.StringVar()
+    results_to_export = ""
+    wav_amount = 0
+    flac_amount = 0
+    mp3_amount = 0
 
-colors = ["#011f4b", "#03396c", "#005b96", "#6497b1", "#b3cde0", "#001f24"]
+    customtkinter.set_appearance_mode("system")
+    customtkinter.set_default_color_theme("dark-blue")
+    customtkinter.deactivate_automatic_dpi_awareness()
+    window = customtkinter.CTk()
+    window.resizable(width=False, height=False)
+    window.geometry("1300x390")  # "797x390"
+    window.title("Audio Data Analyzer - by @roldyaudio")
 
-frame_main = customtkinter.CTkFrame(master=window, fg_color="black", corner_radius=10)  # Color transversal
-frame_main.pack(expand=True, fill="both", padx=5, pady=5)
-frame_main.columnconfigure((0, 1), weight=0)
-frame_main.rowconfigure((0, 4), weight=0)
+    enabled_text_color = "white"  # Example: blue color when enabled
+    disabled_text_color = "#a3a3a3"  # Example: gray color when disabled
+    var_entry = customtkinter.StringVar()
+    var_entry.trace("w", check_entry)
+    var_directory_path = customtkinter.StringVar()
 
-# Top left frame ------------------------------------------------------------------------------------------------------
+    colors = ["#011f4b", "#03396c", "#005b96", "#6497b1", "#b3cde0", "#001f24"]
 
-frame_switches = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
-frame_switches.grid(row=0, column=0, padx=5, pady=5, rowspan=2)
-frame_switches.columnconfigure((0, 1), weight=0)
-frame_switches.rowconfigure((0, 3), weight=0)
+    frame_main = customtkinter.CTkFrame(master=window, fg_color="black", corner_radius=10)  # Color transversal
+    frame_main.pack(expand=True, fill="both", padx=5, pady=5)
+    frame_main.columnconfigure((0, 1), weight=0)
+    frame_main.rowconfigure((0, 4), weight=0)
 
-# Label
-label_filetype = customtkinter.CTkLabel(master=frame_switches, text="Select file type to analyse:", )
-label_filetype.grid(row=0, column=0, columnspan=2, ipadx=10)
+    # Top left frame ------------------------------------------------------------------------------------------------------
 
-# Switch theme
-progress_color = colors[1]
-switch_color = colors[0]
-switch_hover = "#03396c"
+    frame_switches = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
+    frame_switches.grid(row=0, column=0, padx=5, pady=5, rowspan=2)
+    frame_switches.columnconfigure((0, 1), weight=0)
+    frame_switches.rowconfigure((0, 3), weight=0)
 
-# Switches
-switch_wav = customtkinter.CTkSwitch(master=frame_switches, text=".wav", progress_color=progress_color,
-                                     button_color=switch_color, button_hover_color=switch_hover,
-                                     command=uncheck_boxes_if_switches)
-switch_wav.grid(row=1, column=0, columnspan=2, ipady=3)
-switch_wav.select()
-switch_mp3 = customtkinter.CTkSwitch(master=frame_switches, text=".mp3", corner_radius=10, progress_color=progress_color,
-                                     button_color=switch_color, button_hover_color=switch_hover,
-                                     command=uncheck_boxes_if_switches)
-switch_mp3.grid(row=3, column=0, columnspan=2, ipady=3)
-switch_flac = customtkinter.CTkSwitch(master=frame_switches, text=".flac", corner_radius=10,
-                                      progress_color=progress_color,
-                                      button_color=switch_color, button_hover_color=switch_hover,
-                                      command=uncheck_boxes_if_switches)
-switch_flac.grid(row=2, column=0, columnspan=2, ipady=3)
+    # Label
+    label_filetype = customtkinter.CTkLabel(master=frame_switches, text="Select file type to analyse:", )
+    label_filetype.grid(row=0, column=0, columnspan=2, ipadx=10)
 
-# Bottom left frame --------------------------------------------------------------------------------------------------
+    # Switch theme
+    progress_color = colors[1]
+    switch_color = colors[0]
+    switch_hover = "#03396c"
 
-frame_checkbox = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
-frame_checkbox.grid(row=2, column=0, rowspan=4, padx=5, ipady=5)
-frame_checkbox.columnconfigure((0, 0), weight=0)
-frame_checkbox.rowconfigure((0, 6), weight=0)
-# Label
-label_info = customtkinter.CTkLabel(master=frame_checkbox, text="Check data to include:")
-label_info.grid(row=0, column=0, padx=22, pady=1, ipady=1, )
-label_fill = customtkinter.CTkLabel(master=frame_checkbox, text="")
+    # Switches
+    switch_wav = customtkinter.CTkSwitch(master=frame_switches, text=".wav", progress_color=progress_color,
+                                         button_color=switch_color, button_hover_color=switch_hover,
+                                         command=uncheck_boxes_if_switches)
+    switch_wav.grid(row=1, column=0, columnspan=2, ipady=3)
+    switch_wav.select()
+    switch_mp3 = customtkinter.CTkSwitch(master=frame_switches, text=".mp3", corner_radius=10, progress_color=progress_color,
+                                         button_color=switch_color, button_hover_color=switch_hover,
+                                         command=uncheck_boxes_if_switches)
+    switch_mp3.grid(row=3, column=0, columnspan=2, ipady=3)
+    switch_flac = customtkinter.CTkSwitch(master=frame_switches, text=".flac", corner_radius=10,
+                                          progress_color=progress_color,
+                                          button_color=switch_color, button_hover_color=switch_hover,
+                                          command=uncheck_boxes_if_switches)
+    switch_flac.grid(row=2, column=0, columnspan=2, ipady=3)
 
-# Checkboxes theme
-checkmark_color = "white"
-checkbox_fg_color = colors[1]
-checkbox_hover_color = colors[5]
-checkbox_border_width = 2
-checkbox_border_color = "black"
+    # Bottom left frame --------------------------------------------------------------------------------------------------
 
-# Checkboxes
-separation = 5
-x_pos = 1
-checkbox_LUFS = customtkinter.CTkCheckBox(master=frame_checkbox, text="LUFS-I", fg_color=checkbox_fg_color,
-                                          hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
-                                          border_width=checkbox_border_width,
-                                          border_color=checkbox_border_color, state="normal", )
-checkbox_LUFS.grid(row=1, column=0, pady=separation, ipadx=x_pos)
-checkbox_LUFS.select()
-checkbox_peak = customtkinter.CTkCheckBox(master=frame_checkbox, text="True Peak", fg_color=checkbox_fg_color,
-                                          hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
-                                          border_width=checkbox_border_width,
-                                          border_color=checkbox_border_color, state="normal", )
-checkbox_peak.grid(row=2, column=0, pady=separation, ipadx=x_pos)
-checkbox_peak.select()
+    frame_checkbox = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
+    frame_checkbox.grid(row=2, column=0, rowspan=4, padx=5, ipady=5)
+    frame_checkbox.columnconfigure((0, 0), weight=0)
+    frame_checkbox.rowconfigure((0, 6), weight=0)
+    # Label
+    label_info = customtkinter.CTkLabel(master=frame_checkbox, text="Check data to include:")
+    label_info.grid(row=0, column=0, padx=22, pady=1, ipady=1, )
+    # Checkboxes theme
+    checkmark_color = "white"
+    checkbox_fg_color = colors[1]
+    checkbox_hover_color = colors[5]
+    checkbox_border_width = 2
+    checkbox_border_color = "black"
 
-checkbox_sampleR = customtkinter.CTkCheckBox(master=frame_checkbox, text="Sample rate", fg_color=checkbox_fg_color,
-                                             hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
-                                             border_width=checkbox_border_width,
-                                             border_color=checkbox_border_color, state="normal", )
-checkbox_sampleR.grid(row=3, column=0, pady=separation, ipadx=x_pos)
-checkbox_sampleR.select()
-checkbox_channels = customtkinter.CTkCheckBox(master=frame_checkbox, text="Channels", fg_color=checkbox_fg_color,
+    # Checkboxes
+    separation = 5
+    x_pos = 1
+    checkbox_LUFS = customtkinter.CTkCheckBox(master=frame_checkbox, text="LUFS-I", fg_color=checkbox_fg_color,
                                               hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
                                               border_width=checkbox_border_width,
                                               border_color=checkbox_border_color, state="normal", )
-checkbox_channels.grid(row=5, column=0, pady=separation, ipadx=x_pos)
-checkbox_channels.select()
-checkbox_bit_depth = customtkinter.CTkCheckBox(master=frame_checkbox, text="Bit Depth", fg_color=checkbox_fg_color,
-                                               hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
-                                               border_width=checkbox_border_width,
-                                               border_color=checkbox_border_color, state="normal", )
-checkbox_bit_depth.grid(row=4, column=0, pady=separation, ipadx=x_pos)
-checkbox_bit_depth.select()
-checkbox_path = customtkinter.CTkCheckBox(master=frame_checkbox, text="Path", fg_color=checkbox_fg_color,
-                                          hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
-                                          border_width=checkbox_border_width,
-                                          border_color=checkbox_border_color, state="normal", )
-checkbox_path.grid(row=6, column=0, pady=separation, ipadx=x_pos)
-checkbox_path.select()
+    checkbox_LUFS.grid(row=1, column=0, pady=separation, ipadx=x_pos)
+    checkbox_LUFS.select()
+    checkbox_peak = customtkinter.CTkCheckBox(master=frame_checkbox, text="True Peak", fg_color=checkbox_fg_color,
+                                              hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
+                                              border_width=checkbox_border_width,
+                                              border_color=checkbox_border_color, state="normal", )
+    checkbox_peak.grid(row=2, column=0, pady=separation, ipadx=x_pos)
+    checkbox_peak.select()
 
-# Top right frame -----------------------------------------------------------------------------------------------------
+    checkbox_sampleR = customtkinter.CTkCheckBox(master=frame_checkbox, text="Sample rate", fg_color=checkbox_fg_color,
+                                                 hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
+                                                 border_width=checkbox_border_width,
+                                                 border_color=checkbox_border_color, state="normal", )
+    checkbox_sampleR.grid(row=3, column=0, pady=separation, ipadx=x_pos)
+    checkbox_sampleR.select()
+    checkbox_channels = customtkinter.CTkCheckBox(master=frame_checkbox, text="Channels", fg_color=checkbox_fg_color,
+                                                  hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
+                                                  border_width=checkbox_border_width,
+                                                  border_color=checkbox_border_color, state="normal", )
+    checkbox_channels.grid(row=5, column=0, pady=separation, ipadx=x_pos)
+    checkbox_channels.select()
+    checkbox_bit_depth = customtkinter.CTkCheckBox(master=frame_checkbox, text="Bit Depth", fg_color=checkbox_fg_color,
+                                                   hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
+                                                   border_width=checkbox_border_width,
+                                                   border_color=checkbox_border_color, state="normal", )
+    checkbox_bit_depth.grid(row=4, column=0, pady=separation, ipadx=x_pos)
+    checkbox_bit_depth.select()
+    checkbox_path = customtkinter.CTkCheckBox(master=frame_checkbox, text="Path", fg_color=checkbox_fg_color,
+                                              hover_color=checkbox_hover_color, checkmark_color=checkmark_color,
+                                              border_width=checkbox_border_width,
+                                              border_color=checkbox_border_color, state="normal", )
+    checkbox_path.grid(row=6, column=0, pady=separation, ipadx=x_pos)
+    checkbox_path.select()
 
-frame_results = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
-frame_results.grid(row=0, column=1, rowspan=4, padx=1, pady=5, sticky="nsew", )
-frame_results.columnconfigure((0, 0), weight=0)
-frame_results.rowconfigure((0, 0), weight=0)
-scroll_results = customtkinter.CTkTextbox(master=frame_results, state="normal", wrap="none", width=1105, height=240,
-                                          font=("Lucida Console", 13), )
-scroll_results.grid(row=0, column=1, rowspan=4)
-scroll_results.configure(state="normal", wrap="word")
-scroll_results.insert("0.0", """
-Measures in accordance with the ITU-R BS.1770 recommendation.
+    # Top right frame -----------------------------------------------------------------------------------------------------
 
-- Enter path or browse for directory containing audio files.
-- Select the desire file type to analyse.
-- Check the data you want to include in the analysis.
-- Visualize the data.
-- Export to input path if needed.
+    frame_results = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
+    frame_results.grid(row=0, column=1, rowspan=4, padx=1, pady=5, sticky="nsew", )
+    frame_results.columnconfigure((0, 0), weight=0)
+    frame_results.rowconfigure((0, 0), weight=0)
+    scroll_results = customtkinter.CTkTextbox(master=frame_results, state="normal", wrap="none", width=1105, height=240,
+                                              font=("Lucida Console", 13), )
+    scroll_results.grid(row=0, column=1, rowspan=4)
+    scroll_results.configure(state="normal", wrap="word")
+    scroll_results.insert("0.0", """
+    Measures in accordance with the ITU-R BS.1770 recommendation.
 
-Enjoy ^^ """)
-scroll_results.configure(state="disable", )
+    - Enter path or browse for directory containing audio files.
+    - Select the desire file type to analyse.
+    - Check the data you want to include in the analysis.
+    - Visualize the data.
+    - Export to input path if needed.
 
-# Buttons theme
-width = 120
-height = 25
-corner_radius = 10
-border_width = 1
-border_color = "gray"
-hover_color = colors[1]
-fg_color = colors[0]
-text_color = "black"
+    Enjoy ^^ """)
+    scroll_results.configure(state="disabled", )
 
-# Bottom right frame --------------------------------------------------------------------------------------------------
-frame_buttons = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
-frame_buttons.grid(row=4, column=1, rowspan=2, padx=1, sticky="nsew")
-frame_buttons.rowconfigure((0, 2), weight=1)
-frame_buttons.columnconfigure((0, 2), weight=1)
+    # Buttons theme
+    width = 120
+    height = 25
+    corner_radius = 10
+    border_width = 1
+    border_color = "gray"
+    hover_color = colors[1]
+    fg_color = colors[0]
+    # Bottom right frame --------------------------------------------------------------------------------------------------
+    frame_buttons = customtkinter.CTkFrame(master=frame_main, corner_radius=10)
+    frame_buttons.grid(row=4, column=1, rowspan=2, padx=1, sticky="nsew")
+    frame_buttons.rowconfigure((0, 2), weight=1)
+    frame_buttons.columnconfigure((0, 2), weight=1)
 
-# Buttons
-button_start = customtkinter.CTkButton(master=frame_buttons, text="Start", width=width, height=height,
-                                       corner_radius=corner_radius, border_width=border_width,
-                                       border_color=border_color, hover_color=hover_color, fg_color=fg_color,
-                                       state="disabled", command=button_start_analysis)
-button_start.grid(row=0, column=4, )
-button_export_data = customtkinter.CTkButton(master=frame_buttons, text="Export to file", width=width, height=height,
-                                             corner_radius=corner_radius, border_width=border_width,
-                                             border_color=border_color, hover_color=hover_color, fg_color=fg_color,
-                                             state="disabled", command=button_export_csv_file_to_entry_path)
-button_export_data.grid(row=2, column=4, padx=15)
-button_browse = customtkinter.CTkButton(master=frame_buttons, text="Browse", width=width, height=height,
-                                        corner_radius=corner_radius, border_width=border_width,
-                                        border_color=border_color, hover_color=hover_color, fg_color=fg_color,
-                                        command=button_browse_directory)
-button_browse.grid(row=0, column=0, sticky="w", padx=15)
+    # Buttons
+    button_start = customtkinter.CTkButton(master=frame_buttons, text="Start", width=width, height=height,
+                                           corner_radius=corner_radius, border_width=border_width,
+                                           border_color=border_color, hover_color=hover_color, fg_color=fg_color,
+                                           state="disabled", command=button_start_analysis)
+    button_start.grid(row=0, column=4, )
+    button_export_data = customtkinter.CTkButton(master=frame_buttons, text="Export to file", width=width, height=height,
+                                                 corner_radius=corner_radius, border_width=border_width,
+                                                 border_color=border_color, hover_color=hover_color, fg_color=fg_color,
+                                                 state="disabled", command=button_export_csv_file_to_entry_path)
+    button_export_data.grid(row=2, column=4, padx=15)
+    button_browse = customtkinter.CTkButton(master=frame_buttons, text="Browse", width=width, height=height,
+                                            corner_radius=corner_radius, border_width=border_width,
+                                            border_color=border_color, hover_color=hover_color, fg_color=fg_color,
+                                            command=button_browse_directory)
+    button_browse.grid(row=0, column=0, sticky="w", padx=15)
 
-# Entry
-entry_path = customtkinter.CTkEntry(master=frame_buttons, width=800,
-                                    placeholder_text="Enter directory with files here...", textvariable=var_entry)
-entry_path.grid(row=0, column=1, ipadx=1)
-entry_path.bind("<Return>", button_start_analysis)
+    # Entry
+    entry_path = customtkinter.CTkEntry(master=frame_buttons, width=800,
+                                        placeholder_text="Enter directory with files here...", textvariable=var_entry)
+    entry_path.grid(row=0, column=1, ipadx=1)
+    entry_path.bind("<Return>", button_start_analysis)
 
-# Label results
-label_results = customtkinter.CTkLabel(master=frame_buttons, text="", wraplength=900, )
-label_results.grid(row=1, column=0, sticky="w", ipadx=30, columnspan=3,)
+    # Label results
+    label_results = customtkinter.CTkLabel(master=frame_buttons, text="", wraplength=900, )
+    label_results.grid(row=1, column=0, sticky="w", ipadx=30, columnspan=3,)
 
-# Progress bar
-progress_bar = customtkinter.CTkProgressBar(master=frame_buttons, progress_color=colors[1], border_width=1,
-                                            fg_color="black", width=800)
-progress_bar.grid(row=2, column=0, columnspan=2, padx=10)
-progress_bar.set(0)
+    # Progress bar
+    progress_bar = customtkinter.CTkProgressBar(master=frame_buttons, progress_color=colors[1], border_width=1,
+                                                fg_color="black", width=800)
+    progress_bar.grid(row=2, column=0, columnspan=2, padx=10)
+    progress_bar.set(0)
 
-center_app(window, 1300, 390)
-# Comprobar si FFmpeg está instalado
-if not check_ffmpeg_installed():
-    window.destroy()
-    print("\x1b[31mFFmpeg is not installed. Closing the application.\x1b[0m")
-    print("\x1b[33mRefer to 'Download' tab at the App Hub to install it. If you already intalled ffmpeg and still getting this message, re-run the App hub launcher \x1b[0m")
-else:
-    window.mainloop()
-    
+    center_app(window, 1300, 390)
+    # Comprobar si FFmpeg está instalado
+    if not check_ffmpeg_installed():
+        window.destroy()
+        print("\x1b[31mFFmpeg is not installed. Closing the application.\x1b[0m")
+        print("\x1b[33mRefer to 'Download' tab at the App Hub to install it. If you already intalled ffmpeg and still getting this message, re-run the App hub launcher \x1b[0m")
+    else:
+        window.mainloop()
+
+
+if __name__ == "__main__":
+    main()
